@@ -53,7 +53,7 @@ async fn project(
 }
 
 fn get_projects(image_dir: &str) -> Vec<Project> {
-    WalkDir::new(image_dir)
+    let mut projects: Vec<Project> = WalkDir::new(image_dir)
         .min_depth(1)
         .max_depth(1)
         .into_iter()
@@ -75,11 +75,15 @@ fn get_projects(image_dir: &str) -> Vec<Project> {
                 .unwrap_or_else(|| "placeholder.jpg".to_string());
             Project { name, preview_image }
         })
-        .collect()
+        .collect();
+    
+    // 按名称排序
+    projects.sort_by(|a, b| a.name.cmp(&b.name));
+    projects
 }
 
 fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
-    let images = WalkDir::new(format!("{}/{}", image_dir, project_name))
+    let mut images: Vec<String> = WalkDir::new(format!("{}/{}", image_dir, project_name))
         .max_depth(1)
         .into_iter()
         .filter_map(|entry| entry.ok())
@@ -91,6 +95,9 @@ fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
         })
         .map(|entry| entry.path().strip_prefix(image_dir).unwrap().to_string_lossy().into_owned())
         .collect();
+    
+    // 按名称排序
+    images.sort();
     
     ProjectImages {
         name: project_name.to_string(),
