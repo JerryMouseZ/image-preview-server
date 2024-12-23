@@ -3,6 +3,14 @@ use actix_files as fs;
 use serde::Serialize;
 use tera::Tera;
 use walkdir::WalkDir;
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value = "img")]
+    image_dir: String,
+}
 
 #[derive(Serialize)]
 struct Project {
@@ -16,8 +24,12 @@ struct ProjectImages {
     images: Vec<String>,
 }
 
-async fn index(tmpl: web::Data<Tera>) -> impl Responder {
-    let projects = get_projects();
+struct AppState {
+    image_dir: String,
+}
+
+async fn index(tmpl: web::Data<Tera>, data: web::Data<AppState>) -> impl Responder {
+    let projects = get_projects(&data.image_dir);
     let mut ctx = tera::Context::new();
     ctx.insert("projects", &projects);
     
@@ -25,9 +37,14 @@ async fn index(tmpl: web::Data<Tera>) -> impl Responder {
     HttpResponse::Ok().content_type("text/html").body(rendered)
 }
 
-async fn project(tmpl: web::Data<Tera>, path: web::Path<String>) -> impl Responder {
+async fn project(
+    tmpl: web::Data<Tera>, 
+    path: web::Path<String>,
+    data: web::Data<AppState>
+) -> impl Responder {
     let project_name = path.into_inner();
-    let project_images = get_project_images(&project_name);
+    println!("Project name: {}", project_name);
+    let project_images = get_project_images(&data.image_dir, &project_name);
     let mut ctx = tera::Context::new();
     ctx.insert("project", &project_images);
     
@@ -35,8 +52,8 @@ async fn project(tmpl: web::Data<Tera>, path: web::Path<String>) -> impl Respond
     HttpResponse::Ok().content_type("text/html").body(rendered)
 }
 
-fn get_projects() -> Vec<Project> {
-    WalkDir::new("img")
+fn get_projects(image_dir: &str) -> Vec<Project> {
+    WalkDir::new(image_dir)
         .min_depth(1)
         .max_depth(1)
         .into_iter()
@@ -54,15 +71,15 @@ fn get_projects() -> Vec<Project> {
                         ext == "jpg" || ext == "png" || ext == "gif"
                     )
                 })
-                .map(|e| e.path().strip_prefix("img/").unwrap().to_string_lossy().into_owned())
+                .map(|e| e.path().strip_prefix(image_dir).unwrap().to_string_lossy().into_owned())
                 .unwrap_or_else(|| "placeholder.jpg".to_string());
             Project { name, preview_image }
         })
         .collect()
 }
 
-fn get_project_images(project_name: &str) -> ProjectImages {
-    let images = WalkDir::new(format!("img/{}", project_name))
+fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
+    let images = WalkDir::new(format!("{}/{}", image_dir, project_name))
         .max_depth(1)
         .into_iter()
         .filter_map(|entry| entry.ok())
@@ -72,7 +89,7 @@ fn get_project_images(project_name: &str) -> ProjectImages {
                 ext == "jpg" || ext == "png" || ext == "gif"
             )
         })
-        .map(|entry| entry.path().strip_prefix("img/").unwrap().to_string_lossy().into_owned())
+        .map(|entry| entry.path().strip_prefix(image_dir).unwrap().to_string_lossy().into_owned())
         .collect();
     
     ProjectImages {
@@ -83,12 +100,19 @@ fn get_project_images(project_name: &str) -> ProjectImages {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args = Args::parse();
+    let image_dir = args.image_dir;
+    
+    println!("Using image directory: {}", image_dir);
     let tera = Tera::new("templates/**/*").unwrap();
     
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(tera.clone()))
-            .service(fs::Files::new("/img", "img").show_files_listing())
+            .app_data(web::Data::new(AppState {
+                image_dir: image_dir.clone(),
+            }))
+            .service(fs::Files::new("/img", &image_dir).show_files_listing())
             .service(web::resource("/").to(index))
             .service(web::resource("/project/{name}").to(project))
     })
