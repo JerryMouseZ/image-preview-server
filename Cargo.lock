@@ -893,6 +893,7 @@ dependencies = [
  "actix-files",
  "actix-web",
  "clap",
+ "percent-encoding",
  "serde",
  "tera",
  "walkdir",

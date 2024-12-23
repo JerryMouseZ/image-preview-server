@@ -58,9 +58,9 @@
     {% for image in project.images %}
     <div class="image">
         <div class="image-container">
-            <img data-src="/img/{{ image }}" alt="{{ image }}" loading="lazy">
+            <img data-src="/img/{{ image | urlencode }}" alt="{{ image }}" loading="lazy">
         </div>
-        <p>{{ image }}</p>
+        <p>{{ image | split(pat="/") | last }}</p>
     </div>
     {% endfor %}
 

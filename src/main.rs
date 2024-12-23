@@ -4,6 +4,8 @@ use serde::Serialize;
 use tera::Tera;
 use walkdir::WalkDir;
 use clap::Parser;
+use percent_encoding::percent_decode_str;
+use std::path::Path;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -42,7 +44,11 @@ async fn project(
     path: web::Path<String>,
     data: web::Data<AppState>
 ) -> impl Responder {
-    let project_name = path.into_inner();
+    let encoded_project_name = path.into_inner();
+    let project_name = percent_decode_str(&encoded_project_name)
+        .decode_utf8_lossy()
+        .into_owned();
+    
     println!("Project name: {}", project_name);
     let project_images = get_project_images(&data.image_dir, &project_name);
     let mut ctx = tera::Context::new();
@@ -65,14 +71,19 @@ fn get_projects(image_dir: &str) -> Vec<Project> {
                 .max_depth(1)
                 .into_iter()
                 .filter_map(|e| e.ok())
-                .find(|e| {
+                .filter(|e| {
                     e.file_type().is_file() && 
                     e.path().extension().map_or(false, |ext| 
                         ext == "jpg" || ext == "png" || ext == "gif"
                     )
                 })
-                .map(|e| e.path().strip_prefix(image_dir).unwrap().to_string_lossy().into_owned())
+                .min_by_key(|e| e.file_name().to_string_lossy().into_owned())
+                .map(|e| {
+                    let rel_path = e.path().strip_prefix(image_dir).unwrap();
+                    rel_path.to_string_lossy().into_owned()
+                })
                 .unwrap_or_else(|| "placeholder.jpg".to_string());
+            
             Project { name, preview_image }
         })
         .collect();
@@ -83,7 +94,9 @@ fn get_projects(image_dir: &str) -> Vec<Project> {
 }
 
 fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
-    let mut images: Vec<String> = WalkDir::new(format!("{}/{}", image_dir, project_name))
+    let project_path = Path::new(image_dir).join(project_name);
+    
+    let mut images: Vec<String> = WalkDir::new(&project_path)
         .max_depth(1)
         .into_iter()
         .filter_map(|entry| entry.ok())
@@ -93,7 +106,12 @@ fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
                 ext == "jpg" || ext == "png" || ext == "gif"
             )
         })
-        .map(|entry| entry.path().strip_prefix(image_dir).unwrap().to_string_lossy().into_owned())
+        .filter_map(|entry| {
+            entry.path()
+                .strip_prefix(image_dir)
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned())
+        })
         .collect();
     
     // 按名称排序
@@ -119,7 +137,12 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(AppState {
                 image_dir: image_dir.clone(),
             }))
-            .service(fs::Files::new("/img", &image_dir).show_files_listing())
+            .service(
+                fs::Files::new("/img", &image_dir)
+                    .show_files_listing()
+                    .use_hidden_files()
+                    .prefer_utf8(true)
+            )
             .service(web::resource("/").to(index))
             .service(web::resource("/project/{name}").to(project))
     })

@@ -30,9 +30,9 @@
     <h1>Projects</h1>
     {% for project in projects %}
     <div class="project">
-        <a href="/project/{{ project.name }}">
+        <a href="/project/{{ project.name | urlencode }}">
             <div class="image-container">
-                <img data-src="/img/{{ project.preview_image }}" alt="{{ project.name }}" loading="lazy">
+                <img data-src="/img/{{ project.preview_image | urlencode }}" alt="{{ project.name }}" loading="lazy">
             </div>
             <p>{{ project.name }}</p>
         </a>
