@@ -7,6 +7,7 @@
             display: inline-block;
             margin: 10px;
             vertical-align: top;
+            cursor: pointer;
         }
         .image img {
             max-width: 100%;
@@ -19,6 +20,34 @@
             align-items: center;
             justify-content: center;
             background-color: #f0f0f0;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            overflow: auto;
+        }
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90vh;
+            margin-top: 2vh;
+        }
+        .close {
+            position: absolute;
+            right: 20px;
+            top: 10px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -34,10 +63,20 @@
     </div>
     {% endfor %}
 
+    <!-- Modal -->
+    <div id="imageModal" class="modal">
+        <span class="close">&times;</span>
+        <img class="modal-content" id="modalImage">
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var lazyImages = [].slice.call(document.querySelectorAll("img[data-src]"));
+            var modal = document.getElementById("imageModal");
+            var modalImg = document.getElementById("modalImage");
+            var closeBtn = document.getElementsByClassName("close")[0];
 
+            // Lazy loading
             if ("IntersectionObserver" in window) {
                 let lazyImageObserver = new IntersectionObserver(function(entries, observer) {
                     entries.forEach(function(entry) {
@@ -54,11 +93,28 @@
                     lazyImageObserver.observe(lazyImage);
                 });
             } else {
-                // Fallback for browsers that don't support IntersectionObserver
                 lazyImages.forEach(function(lazyImage) {
                     lazyImage.src = lazyImage.dataset.src;
                     lazyImage.removeAttribute("data-src");
                 });
+            }
+
+            // Modal functionality
+            document.querySelectorAll('.image img').forEach(img => {
+                img.onclick = function() {
+                    modal.style.display = "block";
+                    modalImg.src = this.src;
+                }
+            });
+
+            closeBtn.onclick = function() {
+                modal.style.display = "none";
+            }
+
+            modal.onclick = function(event) {
+                if (event.target === modal) {
+                    modal.style.display = "none";
+                }
             }
         });
     </script>
