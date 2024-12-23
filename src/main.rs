@@ -34,7 +34,7 @@ async fn index(tmpl: web::Data<Tera>, data: web::Data<AppState>) -> impl Respond
     ctx.insert("projects", &projects);
     
     let rendered = tmpl.render("index.html", &ctx).unwrap();
-    HttpResponse::Ok().content_type("text/html").body(rendered)
+    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(rendered)
 }
 
 async fn project(
@@ -49,7 +49,7 @@ async fn project(
     ctx.insert("project", &project_images);
     
     let rendered = tmpl.render("project.html", &ctx).unwrap();
-    HttpResponse::Ok().content_type("text/html").body(rendered)
+    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(rendered)
 }
 
 fn get_projects(image_dir: &str) -> Vec<Project> {
