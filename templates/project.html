@@ -4,23 +4,24 @@
     <meta charset="UTF-8">
     <title>{{ project.name }} - Image Preview Server</title>
     <style>
-        .image {
+        .media-item {
             display: inline-block;
             margin: 10px;
             vertical-align: top;
             cursor: pointer;
         }
-        .image img {
-            max-width: 100%;
-            height: auto;
-        }
-        .image-container {
+        .media-container {
             width: 300px;
             min-height: 200px;
             display: flex;
             align-items: center;
             justify-content: center;
             background-color: #f0f0f0;
+        }
+        .media-container img, .media-container video {
+            max-width: 100%;
+            max-height: 300px;
+            height: auto;
         }
         /* Modal styles */
         .modal {
@@ -50,32 +51,55 @@
             font-weight: bold;
             cursor: pointer;
         }
+        .video-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <h1>{{ project.name }}</h1>
     <a href="/">Back to projects</a>
-    {% for image in project.images %}
-    <div class="image">
-        <div class="image-container">
-            <img data-src="/img/{{ image | urlencode }}" alt="{{ image }}" loading="lazy">
+    {% for media in project.media_files %}
+    <div class="media-item">
+        <div class="media-container">
+            {% if media.is_video %}
+            <video controls preload="metadata">
+                <source src="/img/{{ media.path | urlencode }}" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            {% else %}
+            <img data-src="/img/{{ media.path | urlencode }}" alt="{{ media.path }}" loading="lazy">
+            {% endif %}
         </div>
-        <p>{{ image | split(pat="/") | last }}</p>
+        <p>{{ media.path | split(pat="/") | last }}</p>
     </div>
     {% endfor %}
 
     <!-- Modal -->
     <div id="imageModal" class="modal">
         <span class="close">&times;</span>
-        <img class="modal-content" id="modalImage">
+        <div class="modal-content" id="modalContent"></div>
+        <div class="video-controls" id="videoControls">
+            <button id="playPause">Play/Pause</button>
+            <button id="fullscreen">Fullscreen</button>
+        </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var lazyImages = [].slice.call(document.querySelectorAll("img[data-src]"));
             var modal = document.getElementById("imageModal");
-            var modalImg = document.getElementById("modalImage");
+            var modalContent = document.getElementById("modalContent");
             var closeBtn = document.getElementsByClassName("close")[0];
+            var videoControls = document.getElementById("videoControls");
+            var currentMedia = null;
 
             // Lazy loading
             if ("IntersectionObserver" in window) {
@@ -101,20 +125,69 @@
             }
 
             // Modal functionality
-            document.querySelectorAll('.image img').forEach(img => {
-                img.onclick = function() {
+            document.querySelectorAll('.media-item').forEach(item => {
+                item.onclick = function() {
                     modal.style.display = "block";
-                    modalImg.src = this.src;
+                    modalContent.innerHTML = '';
+                    
+                    let mediaElement = this.querySelector('video, img');
+                    if (mediaElement.tagName === 'VIDEO') {
+                        let video = document.createElement('video');
+                        video.src = mediaElement.querySelector('source').src;
+                        video.controls = true;
+                        video.classList.add('modal-content');
+                        modalContent.appendChild(video);
+                        videoControls.style.display = 'block';
+                        currentMedia = video;
+                    } else {
+                        let img = document.createElement('img');
+                        img.src = mediaElement.src || mediaElement.dataset.src;
+                        img.classList.add('modal-content');
+                        modalContent.appendChild(img);
+                        videoControls.style.display = 'none';
+                        currentMedia = null;
+                    }
                 }
             });
 
             closeBtn.onclick = function() {
                 modal.style.display = "none";
+                if (currentMedia && currentMedia.tagName === 'VIDEO') {
+                    currentMedia.pause();
+                }
             }
 
             modal.onclick = function(event) {
                 if (event.target === modal) {
                     modal.style.display = "none";
+                    if (currentMedia && currentMedia.tagName === 'VIDEO') {
+                        currentMedia.pause();
+                    }
+                }
+            }
+
+            // Video controls
+            document.getElementById('playPause').onclick = function(e) {
+                e.stopPropagation();
+                if (currentMedia && currentMedia.tagName === 'VIDEO') {
+                    if (currentMedia.paused) {
+                        currentMedia.play();
+                    } else {
+                        currentMedia.pause();
+                    }
+                }
+            }
+
+            document.getElementById('fullscreen').onclick = function(e) {
+                e.stopPropagation();
+                if (currentMedia && currentMedia.tagName === 'VIDEO') {
+                    if (currentMedia.requestFullscreen) {
+                        currentMedia.requestFullscreen();
+                    } else if (currentMedia.webkitRequestFullscreen) {
+                        currentMedia.webkitRequestFullscreen();
+                    } else if (currentMedia.msRequestFullscreen) {
+                        currentMedia.msRequestFullscreen();
+                    }
                 }
             }
         });
