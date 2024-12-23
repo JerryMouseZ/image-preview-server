@@ -4,7 +4,7 @@ use serde::Serialize;
 use tera::Tera;
 use walkdir::WalkDir;
 use clap::Parser;
-use percent_encoding::percent_decode_str;
+use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::path::Path;
 
 #[derive(Parser)]
@@ -59,15 +59,72 @@ async fn project(
 }
 
 fn get_projects(image_dir: &str) -> Vec<Project> {
-    let mut projects: Vec<Project> = WalkDir::new(image_dir)
-        .min_depth(1)
+    let mut projects = Vec::new();
+    let base_path = Path::new(image_dir);
+
+    // 检查根目录是否直接包含图片文件
+    let has_root_images = WalkDir::new(image_dir)
         .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            e.file_type().is_file() && 
+            e.path().extension().map_or(false, |ext| 
+                ext == "jpg" || ext == "png" || ext == "gif"
+            )
+        });
+
+    // 如果根目录直接包含图片，添加一个"root"项目
+    if has_root_images {
+        let preview_image = WalkDir::new(image_dir)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.file_type().is_file() && 
+                e.path().extension().map_or(false, |ext| 
+                    ext == "jpg" || ext == "png" || ext == "gif"
+                )
+            })
+            .min_by_key(|e| e.file_name().to_string_lossy().into_owned())
+            .map(|e| {
+                let rel_path = e.path().strip_prefix(image_dir).unwrap();
+                rel_path.to_string_lossy().into_owned()
+            })
+            .unwrap_or_else(|| "placeholder.jpg".to_string());
+
+        projects.push(Project {
+            name: "root".to_string(),
+            preview_image,
+        });
+    }
+
+    // 递归遍历所有子目录
+    for entry in WalkDir::new(image_dir)
+        .min_depth(1)
         .into_iter()
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_dir())
-        .map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let preview_image = WalkDir::new(entry.path())
+    {
+        let dir_path = entry.path();
+        
+        // 检查目录是否包含图片文件
+        let has_images = WalkDir::new(dir_path)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                e.file_type().is_file() && 
+                e.path().extension().map_or(false, |ext| 
+                    ext == "jpg" || ext == "png" || ext == "gif"
+                )
+            });
+
+        if has_images {
+            let rel_path = dir_path.strip_prefix(base_path).unwrap();
+            let name = rel_path.to_string_lossy().into_owned();
+            
+            let preview_image = WalkDir::new(dir_path)
                 .max_depth(1)
                 .into_iter()
                 .filter_map(|e| e.ok())
@@ -83,10 +140,10 @@ fn get_projects(image_dir: &str) -> Vec<Project> {
                     rel_path.to_string_lossy().into_owned()
                 })
                 .unwrap_or_else(|| "placeholder.jpg".to_string());
-            
-            Project { name, preview_image }
-        })
-        .collect();
+
+            projects.push(Project { name, preview_image });
+        }
+    }
     
     // 按名称排序
     projects.sort_by(|a, b| a.name.cmp(&b.name));
@@ -94,25 +151,50 @@ fn get_projects(image_dir: &str) -> Vec<Project> {
 }
 
 fn get_project_images(image_dir: &str, project_name: &str) -> ProjectImages {
-    let project_path = Path::new(image_dir).join(project_name);
+    let project_path = if project_name == "root" {
+        Path::new(image_dir).to_path_buf()
+    } else {
+        Path::new(image_dir).join(project_name)
+    };
     
-    let mut images: Vec<String> = WalkDir::new(&project_path)
-        .max_depth(1)
-        .into_iter()
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry.file_type().is_file() && 
-            entry.path().extension().map_or(false, |ext| 
-                ext == "jpg" || ext == "png" || ext == "gif"
-            )
-        })
-        .filter_map(|entry| {
-            entry.path()
-                .strip_prefix(image_dir)
-                .ok()
-                .map(|path| path.to_string_lossy().into_owned())
-        })
-        .collect();
+    let mut images: Vec<String> = if project_name == "root" {
+        // 对于根目录，只获取直接位于根目录的图片
+        WalkDir::new(&project_path)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry.file_type().is_file() && 
+                entry.path().extension().map_or(false, |ext| 
+                    ext == "jpg" || ext == "png" || ext == "gif"
+                )
+            })
+            .filter_map(|entry| {
+                entry.path()
+                    .strip_prefix(image_dir)
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .collect()
+    } else {
+        // 对于子目录，递归获取该目录下的所有图片
+        WalkDir::new(&project_path)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry.file_type().is_file() && 
+                entry.path().extension().map_or(false, |ext| 
+                    ext == "jpg" || ext == "png" || ext == "gif"
+                )
+            })
+            .filter_map(|entry| {
+                entry.path()
+                    .strip_prefix(image_dir)
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            })
+            .collect()
+    };
     
     // 按名称排序
     images.sort();
@@ -129,7 +211,16 @@ async fn main() -> std::io::Result<()> {
     let image_dir = args.image_dir;
     
     println!("Using image directory: {}", image_dir);
-    let tera = Tera::new("templates/**/*").unwrap();
+    let mut tera = Tera::new("templates/**/*").unwrap();
+    
+    // 添加自定义过滤器用于严格的URL编码
+    tera.register_filter("urlencode_strict", |value: &tera::Value, _: &std::collections::HashMap<String, tera::Value>| {
+        if let tera::Value::String(s) = value {
+            Ok(tera::Value::String(utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()))
+        } else {
+            Ok(tera::Value::Null)
+        }
+    });
     
     HttpServer::new(move || {
         App::new()
